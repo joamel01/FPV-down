@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="sv">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a1118" />
+    <meta name="description" content="FPV Down – en modern 3D-försvarssimulator mot FPV-drönare." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>FPV Down — Drone Defense</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game-canvas" aria-label="FPV Down spelvy"></canvas>
+
+      <div id="damage-vignette" aria-hidden="true"></div>
+      <div id="hit-marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div id="crosshair" aria-hidden="true"><span></span><span></span><span></span><span></span><b></b></div>
+
+      <header id="top-hud" class="game-ui hidden">
+        <div class="hud-brand">
+          <span class="signal-dot"></span>
+          <div><strong>FPV DOWN</strong><small>SEKTOR VARG</small></div>
+        </div>
+        <div class="mission-state">
+          <small id="wave-label">VÅG 01</small>
+          <strong id="mission-text">HÅLL SEKTORN</strong>
+          <div class="wave-progress"><i id="wave-progress-fill"></i></div>
+        </div>
+        <div class="threat-state">
+          <small>AKTIVA HOT</small>
+          <strong id="threat-count">00</strong>
+        </div>
+      </header>
+
+      <section id="status-hud" class="game-ui hidden">
+        <div class="status-block health-block">
+          <small>OPERATÖR</small>
+          <div class="status-line"><span>HÄLSA</span><strong id="health-value">100</strong></div>
+          <div class="meter health"><i id="health-fill"></i></div>
+          <div class="status-line muted"><span>SKYDDSVÄST</span><strong id="armor-value">50</strong></div>
+          <div class="meter armor"><i id="armor-fill"></i></div>
+        </div>
+      </section>
+
+      <section id="weapon-hud" class="game-ui hidden">
+        <div class="weapon-meta">
+          <small id="fire-mode">SEMI</small>
+          <strong id="weapon-name">M12 HAGELGEVÄR</strong>
+        </div>
+        <div class="ammo-count"><strong id="ammo-current">08</strong><span>/</span><small id="ammo-reserve">40</small></div>
+        <div class="reload-track"><i id="reload-fill"></i></div>
+        <div class="weapon-slots">
+          <button data-weapon="0" class="active"><kbd>1</kbd><span>M12</span></button>
+          <button data-weapon="1"><kbd>2</kbd><span>AK5-C</span></button>
+          <button data-weapon="2"><kbd>3</kbd><span>CAR-15</span></button>
+        </div>
+      </section>
+
+      <aside id="radar" class="game-ui hidden">
+        <canvas id="radar-canvas" width="176" height="176"></canvas>
+        <span class="radar-north">N</span>
+        <small>PASSIV RADAR · 120 M</small>
+      </aside>
+
+      <div id="score-hud" class="game-ui hidden"><small>POÄNG</small><strong id="score-value">000000</strong></div>
+      <div id="notification" class="game-ui" role="status"></div>
+      <div id="interaction-hint" class="game-ui hidden">KLICKA FÖR ATT ÅTERTA SIKTET</div>
+
+      <main id="start-screen" class="overlay-screen">
+        <div class="start-shade"></div>
+        <div class="start-content">
+          <div class="eyebrow"><span></span> DRÖNARFÖRSVARSSIMULATOR</div>
+          <h1>FPV <em>DOWN</em></h1>
+          <p class="lead">Försvara framskjuten position Varg mot inkommande FPV-drönare. Välj rätt vapen, håll dig i rörelse och överlev vågorna.</p>
+          <div class="feature-row">
+            <article><b>01</b><span>REALISTISK 3D-MILJÖ</span></article>
+            <article><b>02</b><span>DYNAMISKA DRÖNARVÅGOR</span></article>
+            <article><b>03</b><span>TRE VAPENSYSTEM</span></article>
+          </div>
+          <div class="controls-card">
+            <div><kbd>W A S D</kbd><span>FÖRFLYTTNING</span></div>
+            <div><kbd>MUS</kbd><span>SIKTE</span></div>
+            <div><kbd>VÄNSTERKLICK</kbd><span>ELDGIVNING</span></div>
+            <div><kbd>R</kbd><span>LADDA OM</span></div>
+            <div><kbd>1 — 3</kbd><span>BYT VAPEN</span></div>
+            <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
+          </div>
+          <button id="start-button"><span>STARTA UPPDRAGET</span><small>KLICKA FÖR MUSSIKTE</small></button>
+          <p class="warning">Fiktiv träningssimulator · hörlurar rekommenderas</p>
+        </div>
+      </main>
+
+      <section id="pause-screen" class="overlay-screen hidden">
+        <div class="panel compact">
+          <small>SIMULERING PAUSAD</small>
+          <h2>ÅTERTA KONTROLLEN</h2>
+          <p>Klicka för att låsa musen och fortsätta uppdraget.</p>
+          <button id="resume-button">FORTSÄTT</button>
+        </div>
+      </section>
+
+      <section id="gameover-screen" class="overlay-screen hidden">
+        <div class="panel">
+          <small>SEKTOR FÖRLORAD</small>
+          <h2>UPPDRAGET AVBRUTET</h2>
+          <div class="debrief">
+            <div><span>POÄNG</span><strong id="final-score">0</strong></div>
+            <div><span>NEDSKJUTNA</span><strong id="final-kills">0</strong></div>
+            <div><span>NÅDD VÅG</span><strong id="final-wave">1</strong></div>
+            <div><span>TRÄFFSÄKERHET</span><strong id="final-accuracy">0%</strong></div>
+          </div>
+          <button id="restart-button">NYTT UPPDRAG</button>
+        </div>
+      </section>
+
+      <div id="loading-screen">
+        <div class="loader-mark"><span></span><span></span><span></span><span></span></div>
+        <strong>INITIALISERAR SEKTOR VARG</strong>
+        <small id="loading-state">Laddar terräng och ballistik…</small>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
