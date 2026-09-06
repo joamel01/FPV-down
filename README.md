@@ -8,6 +8,9 @@ En modern förstapersonsbaserad 3D-försvarssimulator för webbläsaren. Spelare
 - Tre vapen: M12 hagelgevär, AK5-C och CAR-15.
 - Magasin, reservammunition, eldhastighet, spridning, rekyl och omladdning per vapen.
 - Tre drönarklasser med olika hälsa, fart och skadeverkan.
+- Kroppsbaserad kollision med glidning längs murar, sandsäckar, containrar och byggnader.
+- Drönare undviker fasta hinder, håller avstånd till varandra och kan inte detonera genom väggar.
+- Projektiler stoppas av fasta objekt, med synlig träffeffekt på materialet.
 - Dynamiska vågor, poäng, träffsäkerhet, rustning och slutrapport.
 - Passiv radar, modern taktisk HUD och träffmarkeringar.
 - Three.js/WebGL med ACES-tonemapping, mjuka skuggor, dimma, bloom och PBR-material.

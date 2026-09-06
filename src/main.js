@@ -267,8 +267,28 @@ class Drone {
     desired.addScaledVector(lateral, Math.sin(this.age * 2.4 + this.phase) * 1.5);
     desired.y += Math.sin(this.age * 3.2 + this.phase) * 0.8;
     if (distance < 32) desired.y -= 1.2;
+
+    // Håll drönarna isär och styr dem runt fasta objekt i stället för genom dem.
+    const separation = new THREE.Vector3();
+    this.game.drones.forEach((other) => {
+      if (other === this || !other.alive) return;
+      const offset = this.group.position.clone().sub(other.group.position);
+      const spacing = offset.length();
+      if (spacing > 0.001 && spacing < 1.8 * this.stats.scale) {
+        separation.addScaledVector(offset.normalize(), (1.8 * this.stats.scale - spacing) * 3.2);
+      }
+    });
+    desired.add(separation);
+    desired.add(this.game.getDroneAvoidance(this.group.position, desired, 0.62 * this.stats.scale));
+
     this.velocity.lerp(desired, 1 - Math.exp(-dt * 2.8));
-    this.group.position.addScaledVector(this.velocity, dt);
+    const movement = this.game.resolveDroneMovement(
+      this.group.position,
+      this.velocity.clone().multiplyScalar(dt),
+      0.62 * this.stats.scale
+    );
+    this.group.position.copy(movement.position);
+    if (movement.collided) this.velocity.y = Math.max(this.velocity.y, this.stats.speed * 0.42);
     this.group.position.y = Math.max(1.35, this.group.position.y);
 
     const targetRotation = Math.atan2(this.velocity.x, this.velocity.z);
@@ -276,7 +296,8 @@ class Drone {
     this.group.rotation.z = clamp(-this.velocity.x * 0.035, -0.3, 0.3);
     this.group.rotation.x = clamp(this.velocity.y * 0.03, -0.2, 0.2);
 
-    if (distance < 2.25) {
+    const currentDistance = this.group.position.distanceTo(player);
+    if (currentDistance < 2.25 && this.game.hasClearLineOfSight(this.group.position, player)) {
       this.alive = false;
       this.game.droneDetonation(this, this.stats.damage);
     }
@@ -334,6 +355,7 @@ class FPVDownGame {
     this.audio = new AudioEngine();
     this.keys = new Set();
     this.obstacles = [];
+    this.solidMeshes = [];
     this.drones = [];
     this.effects = [];
     this.tracers = [];
@@ -520,6 +542,130 @@ class FPVDownGame {
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh).expandByScalar(padding);
     this.obstacles.push(box);
+    mesh.traverse((child) => {
+      if (child.isMesh) this.solidMeshes.push(child);
+    });
+  }
+
+  addColliderBox(min, max, padding = 0) {
+    const box = new THREE.Box3(min.clone(), max.clone());
+    if (padding > 0) box.expandByScalar(padding);
+    this.obstacles.push(box);
+    return box;
+  }
+
+  playerCollidesAt(position, radius = 0.43) {
+    const feetY = position.y - 1.72;
+    const headY = position.y + 0.08;
+    return this.obstacles.some((box) => {
+      if (headY <= box.min.y || feetY >= box.max.y) return false;
+      const closestX = clamp(position.x, box.min.x, box.max.x);
+      const closestZ = clamp(position.z, box.min.z, box.max.z);
+      const dx = position.x - closestX;
+      const dz = position.z - closestZ;
+      return dx * dx + dz * dz < radius * radius;
+    });
+  }
+
+  sphereCollidesAt(position, radius) {
+    const closest = new THREE.Vector3();
+    return this.obstacles.some((box) => {
+      box.clampPoint(position, closest);
+      return closest.distanceToSquared(position) < radius * radius;
+    });
+  }
+
+  resolvePlayerMovement(start, delta, radius = 0.43) {
+    const position = start.clone();
+    const steps = Math.max(1, Math.ceil(delta.length() / 0.16));
+    const step = delta.clone().divideScalar(steps);
+
+    for (let index = 0; index < steps; index += 1) {
+      const nextX = position.clone();
+      nextX.x += step.x;
+      if (!this.playerCollidesAt(nextX, radius)) position.x = nextX.x;
+
+      const nextZ = position.clone();
+      nextZ.z += step.z;
+      if (!this.playerCollidesAt(nextZ, radius)) position.z = nextZ.z;
+    }
+
+    position.x = clamp(position.x, -54, 54);
+    position.z = clamp(position.z, -54, 54);
+    position.y = 1.72;
+    return position;
+  }
+
+  getDroneAvoidance(position, desiredVelocity, radius) {
+    const speed = desiredVelocity.length();
+    if (speed < 0.001) return new THREE.Vector3();
+    const probe = position.clone().addScaledVector(desiredVelocity.clone().normalize(), Math.min(3.2, speed * 0.36));
+    const avoidance = new THREE.Vector3();
+    const closest = new THREE.Vector3();
+
+    this.obstacles.forEach((box) => {
+      box.clampPoint(probe, closest);
+      const clearance = closest.distanceTo(probe);
+      if (clearance >= radius + 0.9) return;
+      const center = box.getCenter(new THREE.Vector3());
+      const away = position.clone().sub(center);
+      away.y = 0;
+      if (away.lengthSq() < 0.01) away.set(-desiredVelocity.z, 0, desiredVelocity.x);
+      away.normalize();
+      const strength = 1 - clearance / (radius + 0.9);
+      avoidance.addScaledVector(away, speed * strength * 1.35);
+      avoidance.y += speed * strength * 1.65;
+    });
+
+    return avoidance;
+  }
+
+  resolveDroneMovement(start, delta, radius) {
+    const position = start.clone();
+    let collided = false;
+    const steps = Math.max(1, Math.ceil(delta.length() / Math.max(0.14, radius * 0.4)));
+    const step = delta.clone().divideScalar(steps);
+
+    for (let index = 0; index < steps; index += 1) {
+      const next = position.clone().add(step);
+      if (!this.sphereCollidesAt(next, radius)) {
+        position.copy(next);
+        continue;
+      }
+
+      collided = true;
+      const climb = position.clone();
+      climb.y += Math.max(0.16, step.length() * 0.9);
+      if (!this.sphereCollidesAt(climb, radius)) {
+        position.copy(climb);
+        continue;
+      }
+
+      // Om uppvägen är blockerad får drönaren glida längs hindret.
+      const slideX = position.clone();
+      slideX.x += step.x;
+      if (!this.sphereCollidesAt(slideX, radius)) position.x = slideX.x;
+      const slideZ = position.clone();
+      slideZ.z += step.z;
+      if (!this.sphereCollidesAt(slideZ, radius)) position.z = slideZ.z;
+      const slideY = position.clone();
+      slideY.y += Math.max(step.y, 0.1);
+      if (!this.sphereCollidesAt(slideY, radius)) position.y = slideY.y;
+    }
+
+    return { position, collided };
+  }
+
+  hasClearLineOfSight(from, to) {
+    const direction = to.clone().sub(from);
+    const distance = direction.length();
+    if (distance < 0.001) return true;
+    const ray = new THREE.Ray(from, direction.normalize());
+    const hit = new THREE.Vector3();
+    return !this.obstacles.some((box) => {
+      const intersection = ray.intersectBox(box, hit);
+      return intersection && intersection.distanceTo(from) < distance - 0.12;
+    });
   }
 
   createDefensivePosition() {
@@ -548,8 +694,14 @@ class FPVDownGame {
         bag.castShadow = true;
         bag.receiveShadow = true;
         this.scene.add(bag);
+        this.solidMeshes.push(bag);
       }
     }
+    this.addColliderBox(
+      new THREE.Vector3(-6.1, 0, -5.68),
+      new THREE.Vector3(6.1, 1.04, -4.72),
+      0.05
+    );
 
     const container = new THREE.Mesh(new THREE.BoxGeometry(6.1, 2.75, 2.55), new THREE.MeshStandardMaterial({ color: 0x4b5a52, roughness: 0.68, metalness: 0.42 }));
     container.position.set(-17, 1.38, -15);
@@ -581,12 +733,12 @@ class FPVDownGame {
     cabin.position.y = 7.1;
     cabin.castShadow = true;
     tower.add(cabin);
-    this.scene.add(tower);
+    this.addObstacle(tower, 0.08);
 
     const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 7, 8), steel);
     antenna.position.set(0, 3.5, -3);
     antenna.castShadow = true;
-    this.scene.add(antenna);
+    this.addObstacle(antenna, 0.18);
   }
 
   createPerimeter() {
@@ -622,7 +774,7 @@ class FPVDownGame {
       building.rotation.y = index * 0.4 - 0.2;
       building.castShadow = true;
       building.receiveShadow = true;
-      this.scene.add(building);
+      this.addObstacle(building, 0.15);
     });
   }
 
@@ -941,15 +1093,22 @@ class FPVDownGame {
   }
 
   spawnDrone() {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 62 + Math.random() * 34;
-    const altitude = 7 + Math.random() * 13;
     let type = 'scout';
     const roll = Math.random();
     if (this.wave >= 4 && roll > 0.78) type = 'armored';
     else if (this.wave >= 2 && roll > 0.45) type = 'strike';
-    const position = this.camera.position.clone().add(new THREE.Vector3(Math.sin(angle) * distance, altitude, Math.cos(angle) * distance));
-    position.y = altitude;
+
+    let position = null;
+    const radius = 0.72 * DRONE_TYPES[type].scale;
+    for (let attempt = 0; attempt < 8 && !position; attempt += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 62 + Math.random() * 34;
+      const altitude = 7 + Math.random() * 13;
+      const candidate = this.camera.position.clone().add(new THREE.Vector3(Math.sin(angle) * distance, 0, Math.cos(angle) * distance));
+      candidate.y = altitude;
+      if (!this.sphereCollidesAt(candidate, radius)) position = candidate;
+    }
+    if (!position) position = new THREE.Vector3(0, 24, -82);
     this.drones.push(new Drone(this, type, position));
   }
 
@@ -1013,7 +1172,12 @@ class FPVDownGame {
     const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
     const damageByDrone = new Map();
-    let closestPoint = origin.clone().addScaledVector(forward, weapon.range);
+    const hitMeshes = this.drones.filter((drone) => drone.alive).flatMap((drone) => {
+      const meshes = [];
+      drone.group.traverse((child) => { if (child.isMesh) meshes.push(child); });
+      return meshes;
+    });
+    const shotTargets = [...hitMeshes, ...this.solidMeshes];
 
     for (let pellet = 0; pellet < weapon.pellets; pellet += 1) {
       const direction = forward.clone()
@@ -1022,19 +1186,16 @@ class FPVDownGame {
         .normalize();
       this.raycaster.set(origin, direction);
       this.raycaster.far = weapon.range;
-      const hitMeshes = this.drones.filter((drone) => drone.alive).flatMap((drone) => {
-        const meshes = [];
-        drone.group.traverse((child) => { if (child.isMesh) meshes.push(child); });
-        return meshes;
-      });
-      const intersections = this.raycaster.intersectObjects(hitMeshes, false);
+      const intersections = this.raycaster.intersectObjects(shotTargets, false);
+      let pelletEnd = origin.clone().addScaledVector(direction, weapon.range);
       if (intersections.length > 0) {
         const hit = intersections[0];
+        pelletEnd = hit.point.clone();
         const drone = hit.object.userData.drone;
-        damageByDrone.set(drone, (damageByDrone.get(drone) || 0) + weapon.damage);
-        closestPoint = hit.point.clone();
+        if (drone) damageByDrone.set(drone, (damageByDrone.get(drone) || 0) + weapon.damage);
+        else if (pellet === 0) this.spawnImpact(hit.point, 0xd8c7a8);
       }
-      if (pellet === 0) this.spawnTracer(origin, closestPoint);
+      if (pellet === 0) this.spawnTracer(origin, pelletEnd);
     }
 
     if (damageByDrone.size > 0) {
@@ -1164,12 +1325,7 @@ class FPVDownGame {
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const delta = forward.multiplyScalar(-move.z).add(right.multiplyScalar(move.x)).multiplyScalar(speed * dt);
-    const candidate = this.camera.position.clone().add(delta);
-    candidate.x = clamp(candidate.x, -54, 54);
-    candidate.z = clamp(candidate.z, -54, 54);
-    candidate.y = 1.72;
-    const blocked = this.obstacles.some((box) => box.containsPoint(candidate));
-    if (!blocked) this.camera.position.copy(candidate);
+    this.camera.position.copy(this.resolvePlayerMovement(this.camera.position, delta));
     this.bobTime += dt * (speed > 7 ? 13 : 9);
   }
 
