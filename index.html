@@ -13,6 +13,7 @@
       <canvas id="game-canvas" aria-label="FPV Down spelvy"></canvas>
 
       <div id="damage-vignette" aria-hidden="true"></div>
+      <div id="damage-direction" aria-hidden="true"><i></i></div>
       <div id="hit-marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
       <div id="crosshair" aria-hidden="true"><span></span><span></span><span></span><span></span><b></b></div>
 
@@ -49,6 +50,7 @@
         </div>
         <div class="ammo-count"><strong id="ammo-current">08</strong><span>/</span><small id="ammo-reserve">40</small></div>
         <div class="reload-track"><i id="reload-fill"></i></div>
+        <div id="ammo-warning" role="status" aria-live="polite"></div>
         <div class="weapon-slots">
           <button data-weapon="0" class="active"><kbd>1</kbd><span>M12</span></button>
           <button data-weapon="1"><kbd>2</kbd><span>AK5-C</span></button>
@@ -65,6 +67,7 @@
       <div id="score-hud" class="game-ui hidden"><small>POÄNG</small><strong id="score-value">000000</strong></div>
       <div id="notification" class="game-ui" role="status"></div>
       <div id="interaction-hint" class="game-ui hidden">KLICKA FÖR ATT ÅTERTA SIKTET</div>
+      <div id="performance-hud" class="hidden" aria-label="Prestanda"></div>
 
       <main id="start-screen" class="overlay-screen">
         <div class="start-shade"></div>
@@ -86,6 +89,7 @@
             <div><kbd>SHIFT</kbd><span>SPRINT</span></div>
           </div>
           <button id="start-button"><span>STARTA UPPDRAGET</span><small>KLICKA FÖR MUSSIKTE</small></button>
+          <button class="secondary-button" data-open-settings>INSTÄLLNINGAR</button>
           <p class="warning">Fiktiv träningssimulator · hörlurar rekommenderas</p>
         </div>
       </main>
@@ -96,6 +100,7 @@
           <h2>ÅTERTA KONTROLLEN</h2>
           <p>Klicka för att låsa musen och fortsätta uppdraget.</p>
           <button id="resume-button">FORTSÄTT</button>
+          <button class="secondary-button" data-open-settings>INSTÄLLNINGAR</button>
         </div>
       </section>
 
@@ -112,6 +117,51 @@
           <button id="restart-button">NYTT UPPDRAG</button>
         </div>
       </section>
+
+      <section id="resupply-screen" class="overlay-screen hidden" aria-labelledby="resupply-heading">
+        <div class="panel resupply-panel">
+          <small id="resupply-wave">VÅGEN SLUTFÖRD</small>
+          <h2 id="resupply-heading">FÖRSTÄRK POSITIONEN</h2>
+          <p>Välj en förstärkning. Nästa våg börjar när du är redo.</p>
+          <div id="resupply-status" class="resupply-status"></div>
+          <div class="resupply-options">
+            <button data-resupply="ammo"><b>AMMUNITION</b><strong>+20 / +90 / +105</strong><span>M12 · AK5-C · CAR-15<br>Fyller på reservammunition.<br>Max två startförråd per vapen.</span></button>
+            <button data-resupply="health"><b>SJUKVÅRD</b><strong>+35 HÄLSA</strong><span>Återställ hälsan.<br>Max 100.</span></button>
+            <button data-resupply="armor"><b>SKYDDSVÄST</b><strong>+35 SKYDD</strong><span>Reparera skyddsvästen.<br>Max 50.</span></button>
+          </div>
+          <button class="secondary-button" data-resupply="continue">FORTSÄTT UTAN FÖRSTÄRKNING</button>
+        </div>
+      </section>
+
+      <dialog id="settings-dialog" aria-labelledby="settings-heading">
+        <div class="settings-title"><div><small>ANPASSA SPELET</small><h2 id="settings-heading">INSTÄLLNINGAR</h2></div><button id="settings-close" aria-label="Stäng inställningar">✕</button></div>
+        <div class="settings-grid">
+          <fieldset>
+            <legend>GRAFIK</legend>
+            <label for="quality-setting">Grafikkvalitet</label>
+            <select id="quality-setting" data-setting="quality"><option value="low">Låg – högre prestanda</option><option value="medium">Medel – balanserad</option><option value="high">Hög – mest detaljer</option></select>
+            <p class="setting-help">Låg stänger av skuggor och bloom. Medel använder enklare skuggor. Hög ger fulla effekter och högre upplösning på täta skärmar.</p>
+            <label class="check-setting"><input type="checkbox" data-setting="showPerformance"> Visa FPS och bildtider</label>
+          </fieldset>
+          <fieldset>
+            <legend>MUS</legend>
+            <label for="sensitivity-setting">Muskänslighet <output data-output="sensitivity">1.00×</output></label>
+            <input id="sensitivity-setting" data-setting="sensitivity" type="range" min="0.3" max="2.5" step="0.05">
+            <label class="check-setting"><input type="checkbox" data-setting="invertY"> Invertera vertikalt sikte</label>
+            <p class="setting-help">Justeringarna gäller direkt. Stäng menyn och välj Fortsätt för att prova siktet.</p>
+          </fieldset>
+          <fieldset class="audio-settings">
+            <legend>LJUD</legend>
+            <label for="master-setting">Huvudvolym <output data-output="masterVolume">100 %</output></label>
+            <input id="master-setting" data-setting="masterVolume" type="range" min="0" max="1" step="0.05">
+            <label for="effects-setting">Skott, träffar och effekter <output data-output="effectsVolume">100 %</output></label>
+            <input id="effects-setting" data-setting="effectsVolume" type="range" min="0" max="1" step="0.05">
+            <label for="rotor-setting">Drönarnas rotorljud <output data-output="rotorVolume">100 %</output></label>
+            <input id="rotor-setting" data-setting="rotorVolume" type="range" min="0" max="1" step="0.05">
+          </fieldset>
+        </div>
+        <div class="settings-footer"><p id="settings-status" role="status">Inställningarna sparas automatiskt på den här enheten.</p><button id="settings-reset" class="secondary-button">ÅTERSTÄLL STANDARD</button></div>
+      </dialog>
 
       <div id="loading-screen">
         <div class="loader-mark"><span></span><span></span><span></span><span></span></div>
