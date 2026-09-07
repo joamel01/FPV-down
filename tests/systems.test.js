@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, SettingsStore, normalizeSettings, SETTINGS_KEY } from
 import { EffectsSystem } from '../src/effects.js';
 import { WeaponView } from '../src/weapon-view.js';
 import { FrameProfiler } from '../src/performance.js';
-import { HUD, damageBearing } from '../src/hud.js';
+import { HUD, damageBearing, radarOffset } from '../src/hud.js';
 import { applyResupply, canResupply } from '../src/resupply.js';
 import { WEAPONS } from '../src/config.js';
 
@@ -144,6 +144,23 @@ test('damage direction follows camera heading', () => {
   assert.equal(damageBearing(new THREE.Vector3(0, 0, -10), position, 0), 0);
   assert.equal(damageBearing(new THREE.Vector3(10, 0, 0), position, 0), Math.PI / 2);
   assert.equal(damageBearing(new THREE.Vector3(10, 0, 0), position, -Math.PI / 2), 0);
+});
+
+test('radar keeps targets ahead, behind, left and right correct at every camera heading', () => {
+  const camera = new THREE.PerspectiveCamera();
+  for (const yaw of [0, Math.PI / 4, Math.PI / 2, Math.PI, -Math.PI / 2, -Math.PI / 4, 7.3]) {
+    camera.rotation.set(0, yaw, 0, 'YXZ');
+    const forward = camera.getWorldDirection(new THREE.Vector3());
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    for (const [direction, expectedX, expectedY] of [
+      [forward, 0, -20], [forward.clone().negate(), 0, 20],
+      [right, 20, 0], [right.clone().negate(), -20, 0]
+    ]) {
+      const result = radarOffset(direction.x * 20, direction.z * 20, yaw);
+      assert.ok(Math.abs(result.x - expectedX) < 1e-8, `radar X at yaw ${yaw}`);
+      assert.ok(Math.abs(result.y - expectedY) < 1e-8, `radar Y at yaw ${yaw}`);
+    }
+  }
 });
 
 test('unchanged HUD does not repeatedly write DOM and ammo warning follows actual ammo', () => {

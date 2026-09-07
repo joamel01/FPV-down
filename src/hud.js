@@ -15,6 +15,14 @@ export function damageBearing(source, position, yaw) {
   return Math.atan2(source.x - position.x, -(source.z - position.z)) + yaw;
 }
 
+// Camera right is (cos(yaw), -sin(yaw)) in the world's X/Z plane.
+// Negative radar Y is ahead; the player triangle always points up.
+export function radarOffset(dx, dz, yaw) {
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+  return { x: dx * cos - dz * sin, y: dx * sin + dz * cos };
+}
+
 export class HUD {
   constructor() {
     this.radarContext = document.getElementById('radar-canvas').getContext('2d');
@@ -160,10 +168,7 @@ export class HUD {
     game.drones.forEach((drone) => {
       const dx = drone.group.position.x - game.camera.position.x;
       const dz = drone.group.position.z - game.camera.position.z;
-      const cos = Math.cos(-game.yaw);
-      const sin = Math.sin(-game.yaw);
-      const rx = dx * cos - dz * sin;
-      const rz = dx * sin + dz * cos;
+      const { x: rx, y: rz } = radarOffset(dx, dz, game.yaw);
       const scale = (center - 12) / 120;
       const x = center + clamp(rx * scale, -center + 12, center - 12);
       const y = center + clamp(rz * scale, -center + 12, center - 12);
