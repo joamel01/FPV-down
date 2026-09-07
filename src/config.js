@@ -58,3 +58,21 @@ export const DRONE_TYPES = {
   armored: { hp: 155, speed: 6.5, scale: 1.18, score: 320, damage: 46, color: 0x434744 }
 };
 
+const INTRO_WAVES = [
+  { count: 3, spawnInterval: 3.2 },
+  { count: 4, spawnInterval: 2.8 },
+  { count: 6, spawnInterval: 2.4 },
+  { count: 9, spawnInterval: 1.9 },
+  { count: 12, spawnInterval: 1.5 },
+  { count: 15, spawnInterval: 1.1 }
+];
+
+export function getWaveSettings(number) {
+  return {
+    ...(INTRO_WAVES[number - 1] ?? {
+      count: 4 + number * 2,
+      spawnInterval: Math.max(0.45, 1.45 - number * 0.065)
+    }),
+    initialDelay: number <= 3 ? 2 : 0.5
+  };
+}

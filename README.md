@@ -36,6 +36,20 @@ En modern förstapersonsbaserad 3D-försvarssimulator för webbläsaren. Spelare
 
 ## Inställningar och förstärkningar
 
+De första vågorna har en lugnare introduktion:
+
+| Våg | Drönare | Tid mellan nya drönare |
+| --- | ---: | --- |
+| 1 | 3 | 3,2–3,65 sekunder |
+| 2 | 4 | 2,8–3,25 sekunder |
+| 3 | 6 | 2,4–2,85 sekunder |
+| 4 | 9 | 1,9–2,35 sekunder |
+| 5 | 12 | 1,5–1,95 sekunder |
+| 6 | 15 | 1,1–1,55 sekunder |
+
+De tre första vågorna ger två sekunders förberedelsetid före första drönaren.
+Från våg 7 används den ordinarie stegringen.
+
 Inställningarna gäller direkt och sparas lokalt i webbläsaren. Huvudvolymen
 styr allt ljud; effekter och drönarnas rotorljud kan därefter justeras separat.
 Om lokal lagring inte är tillgänglig fungerar inställningarna för den aktuella

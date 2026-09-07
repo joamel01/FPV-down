@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { WEAPONS, DRONE_TYPES } from './config.js';
+import { WEAPONS, DRONE_TYPES, getWaveSettings } from './config.js';
 import { AudioEngine } from './audio.js';
 import { Drone } from './drone.js';
 import { World } from './world.js';
@@ -250,11 +250,12 @@ export class FPVDownGame {
   }
 
   startWave(number) {
+    const settings = getWaveSettings(number);
     this.wave = number;
-    this.waveTotal = 4 + number * 2;
+    this.waveTotal = settings.count;
     this.waveSpawned = 0;
     this.waveKills = 0;
-    this.spawnTimer = 0.5;
+    this.spawnTimer = settings.initialDelay;
     this.dom.mission.textContent = 'HÅLL SEKTORN';
     this.showNotification(`VÅG ${String(number).padStart(2, '0')} · INKOMMANDE FPV-HOT`);
     this.hud.update(this);
@@ -504,7 +505,7 @@ export class FPVDownGame {
       if (this.spawnTimer <= 0) {
         this.spawnDrone();
         this.waveSpawned += 1;
-        this.spawnTimer = Math.max(0.45, 1.45 - this.wave * 0.065) + Math.random() * 0.45;
+        this.spawnTimer = getWaveSettings(this.wave).spawnInterval + Math.random() * 0.45;
       }
     }
 
