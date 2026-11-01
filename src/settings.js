@@ -4,9 +4,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   masterVolume: 1, effectsVolume: 1, rotorVolume: 1, showPerformance: false
 });
 export const QUALITY_PRESETS = Object.freeze({
-  low: { pixelRatio: 1, shadows: false, shadowSize: 512, bloom: false },
-  medium: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, bloom: false },
-  high: { pixelRatio: 1.8, shadows: true, shadowSize: 2048, bloom: true }
+  low: { pixelRatio: 1, shadows: false, shadowSize: 512, bloom: false, samples: 0 },
+  medium: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, bloom: false, samples: 2 },
+  high: { pixelRatio: 1.8, shadows: true, shadowSize: 2048, bloom: true, samples: 4 }
 });
 
 export function normalizeSettings(input) {
