@@ -11,7 +11,7 @@
 
 ## Nuläge
 
-- Komplett grafisk omarbetning genomförd och verifierad med enhetstester, produktionsbygge och visuella webbläsarkontroller.
+- Komplett grafisk omarbetning och prestandaoptimering genomförd och verifierad med enhetstester, produktionsbygge, webbläsarkontroller och belastningsmätning (60 FPS / ~16,7 ms median vid 24 aktiva drönare, 117 geometribuffertar).
 
 ## Bekräftade beslut
 

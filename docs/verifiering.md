@@ -16,6 +16,7 @@
 | V-02 | K-04: Produktionsbygge och paketering | `npm run build` (`vite build`) | Bygget slutförs utan fel och skapar `dist/` | Godkänd (`dist/` genererad) | 2026-11-01 |
 | V-03 | K-01..K-04: Webbläsarkontroller och GPU-minnesdisciplin | `tools/browser-checks.js` i headless Chromium | Samtliga 11 runtimekontroller passerar och geometriräknaren är konstant efter uppvärmning | Godkänd | 2026-11-01 |
 | V-04 | K-01..K-03: Visuell granskning av himmel, terräng, byggnader, alla tre vapen, drönare och explosioner | Skärmbilder i Chromium (`1600×900`) | Tydlig visuell förbättring utan WebGL- eller konsolfel | Godkänd | 2026-11-01 |
+| V-05 | K-05: Prestandamätning med 24 drönare i Hög/Medel/Låg | Headless Chromium (`1600×900`) | Låg bildtid och fast geometrimängd (117 geometrier; Hög: 406 ritanrop / 16,7 ms median; Medel: 330 ritanrop / 16,6 ms median, 16,9 ms P95; Låg: 195 ritanrop / 16,7 ms median, 16,8 ms P95) | Godkänd | 2026-11-01 |
 
 ## Avvikelser och återstående verifiering
 

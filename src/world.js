@@ -1,9 +1,37 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CollisionWorld } from './collision.js';
 import { createSky, SKY_COLORS } from './sky.js';
 import { concreteTextures, corrugatedTextures, woodTextures, fabricTextures, plasterTextures, rockTexture } from './textures.js';
 
 const { smoothstep } = THREE.MathUtils;
+
+function bakeChildrenByMaterial(group) {
+  group.updateMatrixWorld(true);
+  const invRoot = group.matrixWorld.clone().invert();
+  const buckets = new Map();
+  const children = [...group.children];
+  group.traverse((child) => {
+    if (!child.isMesh) return;
+    const geom = child.geometry.index ? child.geometry.toNonIndexed() : child.geometry.clone();
+    if (!geom.attributes.uv) {
+      geom.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geom.attributes.position.count * 2), 2));
+    }
+    geom.applyMatrix4(invRoot.clone().multiply(child.matrixWorld));
+    const bucket = buckets.get(child.material) ?? [];
+    bucket.push(geom);
+    buckets.set(child.material, bucket);
+  });
+  children.forEach(child => group.remove(child));
+  for (const [material, geometries] of buckets) {
+    const merged = mergeGeometries(geometries);
+    geometries.forEach(g => g.dispose());
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    group.add(mesh);
+  }
+}
 
 // Höjd för terrängen. Spelområdet (r < 85 m) är helt plant så att kollision,
 // drönarhöjd och spelarens ögonhöjd är oförändrade; kullar höjer sig utanför.
@@ -116,7 +144,7 @@ export class World extends CollisionWorld {
     }
 
     const size = 720;
-    const geometry = new THREE.PlaneGeometry(size, size, 180, 180);
+    const geometry = new THREE.PlaneGeometry(size, size, 120, 120);
     geometry.rotateX(-Math.PI / 2);
     const positions = geometry.attributes.position;
     const colors = new Float32Array(positions.count * 3);
@@ -128,7 +156,6 @@ export class World extends CollisionWorld {
       const x = positions.getX(i);
       const z = positions.getZ(i);
       positions.setY(i, terrainHeight(x, z));
-      // Storskalig färgvariation bryter upp texturens upprepning.
       const patch = 0.5 + 0.3 * Math.sin(x * 0.045 + Math.sin(z * 0.03) * 2) * Math.cos(z * 0.052 - 0.8)
         + 0.2 * Math.sin(x * 0.11 + z * 0.09);
       const wear = Math.exp(-Math.hypot(x, z + 2) / 16);
@@ -152,7 +179,7 @@ export class World extends CollisionWorld {
   }
 
   createGrass() {
-    // Tuva av sju avsmalnande strån med mörk bas och ljus topp.
+    // Tuva av sju avsmalnande triangelstrån (1 triangel per strå).
     const blades = 7;
     const positions = [];
     const colors = [];
@@ -167,52 +194,43 @@ export class World extends CollisionWorld {
       const oz = Math.sin(angle) * 0.06;
       const px = -Math.sin(angle) * width;
       const pz = Math.cos(angle) * width;
-      const midX = ox + Math.cos(angle) * lean * 0.4;
-      const midZ = oz + Math.sin(angle) * lean * 0.4;
       const tipX = ox + Math.cos(angle) * lean;
       const tipZ = oz + Math.sin(angle) * lean;
-      const quad = [
-        [ox - px, 0, oz - pz], [ox + px, 0, oz + pz], [midX + px * 0.6, height * 0.55, midZ + pz * 0.6],
-        [ox - px, 0, oz - pz], [midX + px * 0.6, height * 0.55, midZ + pz * 0.6], [midX - px * 0.6, height * 0.55, midZ - pz * 0.6],
-        [midX - px * 0.6, height * 0.55, midZ - pz * 0.6], [midX + px * 0.6, height * 0.55, midZ + pz * 0.6], [tipX, height, tipZ]
-      ];
-      for (const vertex of quad) {
+      const tri = [[ox - px, 0, oz - pz], [ox + px, 0, oz + pz], [tipX, height, tipZ]];
+      for (const vertex of tri) {
         positions.push(...vertex);
-        const t = vertex[1] / height;
-        const c = base.clone().lerp(tip, Math.pow(t, 0.8));
+        const c = vertex[1] > 0 ? tip : base;
         colors.push(c.r, c.g, c.b);
       }
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    // Uppåtriktade normaler ger gräset samma ljussättning som marken.
     const normals = new Float32Array(positions.length);
     for (let i = 1; i < normals.length; i += 3) normals[i] = 1;
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 
     const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide });
-    const count = 9000;
+    const count = 4800;
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     const dummy = new THREE.Object3D();
     const tint = new THREE.Color();
     const green = new THREE.Color(0x9fb07a);
     const straw = new THREE.Color(0xe0cf9a);
     for (let i = 0; i < count; i += 1) {
-      const radius = 3 + Math.pow(this.seededRandom(i * 3), 0.8) * 150;
+      const radius = 3 + Math.pow(this.seededRandom(i * 3), 0.95) * 115;
       const angle = this.seededRandom(i * 3 + 1) * Math.PI * 2;
       const x = Math.cos(angle) * radius;
       const z = Math.sin(angle) * radius;
       dummy.position.set(x, terrainHeight(x, z), z);
       dummy.rotation.set(0, this.seededRandom(i * 3 + 2) * Math.PI * 2, 0);
-      const scale = 0.6 + this.seededRandom(i * 7) * 1.1;
+      const scale = 0.65 + this.seededRandom(i * 7) * 1.1;
       dummy.scale.set(scale, scale * (0.8 + this.seededRandom(i * 11) * 0.5), scale);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       tint.copy(green).lerp(straw, this.seededRandom(i * 13));
       mesh.setColorAt(i, tint);
     }
-    mesh.receiveShadow = true;
     this.scene.add(mesh);
   }
 
@@ -257,7 +275,7 @@ export class World extends CollisionWorld {
   }
 
   createBushes() {
-    const geometry = this.displacedBlob(2, 0.22, 5.1);
+    const geometry = this.displacedBlob(1, 0.22, 5.1);
     const material = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true });
     const count = 170;
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -284,7 +302,6 @@ export class World extends CollisionWorld {
   }
 
   jerseyBarrierGeometry(length, height) {
-    // Betongbarriär med klassisk New Jersey-profil.
     const shape = new THREE.Shape();
     const profile = [[-0.33, 0], [0.33, 0], [0.33, 0.09], [0.24, 0.32], [0.12, height - 0.04], [0.09, height], [-0.09, height], [-0.12, height - 0.04], [-0.24, 0.32], [-0.33, 0.09]];
     shape.moveTo(...profile[0]);
@@ -317,7 +334,8 @@ export class World extends CollisionWorld {
       this.addObstacle(barrier, 0.25);
     });
 
-    const sandbagGeometry = new THREE.CapsuleGeometry(0.22, 0.72, 4, 10);
+    const sandbagGeometry = new THREE.CapsuleGeometry(0.22, 0.72, 4, 8);
+    const sandbagGroup = new THREE.Group();
     for (let row = 0; row < 2; row += 1) {
       for (let i = 0; i < 13; i += 1) {
         const bag = new THREE.Mesh(sandbagGeometry, sand);
@@ -325,12 +343,12 @@ export class World extends CollisionWorld {
         bag.rotation.y = 0.04 * Math.sin(i * 1.7 + row);
         bag.scale.set(1, 1 + 0.06 * Math.sin(i * 2.3 + row * 4), 1.18);
         bag.position.set(-5.4 + i * 0.9, 0.25 + row * 0.38, -5.2 + row * 0.03);
-        bag.castShadow = true;
-        bag.receiveShadow = true;
-        this.scene.add(bag);
-        this.solidMeshes.push(bag);
+        sandbagGroup.add(bag);
       }
     }
+    bakeChildrenByMaterial(sandbagGroup);
+    this.scene.add(sandbagGroup);
+    sandbagGroup.traverse(child => { if (child.isMesh) this.solidMeshes.push(child); });
     this.addColliderBox(
       new THREE.Vector3(-6.1, 0, -5.68),
       new THREE.Vector3(6.1, 1.04, -4.72),
@@ -358,10 +376,9 @@ export class World extends CollisionWorld {
     const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshStandardMaterial({ color: 0xff2a1a, emissive: 0xff2a1a, emissiveIntensity: 4 }));
     beacon.position.y = 7.05;
     antenna.add(beacon);
+    bakeChildrenByMaterial(antenna);
     this.addObstacle(antenna, 0.18);
-    antenna.traverse(child => { if (child.isMesh) child.castShadow = true; });
 
-    // Lådor och fat vid containern och tornet.
     const wood = new THREE.MeshStandardMaterial({ color: 0xffffff, map: woodTex.map, bumpMap: woodTex.bumpMap, bumpScale: 1.5, roughness: 0.85 });
     const crateGeometry = new THREE.BoxGeometry(1.1, 0.9, 1.1);
     [[-13.2, 0.45, -14.2, 0.3], [-13.4, 1.35, -14.1, 0.6], [-12.1, 0.45, -15.3, 0.1], [15.6, 0.45, -16.2, -0.2]].forEach(([x, y, z, r]) => {
@@ -370,18 +387,17 @@ export class World extends CollisionWorld {
       crate.rotation.y = r;
       this.addObstacle(crate, 0.12);
     });
-    const barrelGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.9, 16);
+    const barrelBody = new THREE.CylinderGeometry(0.3, 0.3, 0.9, 14);
+    const hoop1 = new THREE.TorusGeometry(0.305, 0.018, 6, 16);
+    hoop1.rotateX(Math.PI / 2);
+    const hoop2 = hoop1.clone();
+    hoop1.translate(0, -0.22, 0);
+    hoop2.translate(0, 0.22, 0);
+    const barrelGeometry = mergeGeometries([barrelBody.toNonIndexed(), hoop1.toNonIndexed(), hoop2.toNonIndexed()]);
     const barrelColors = [0x3f5236, 0x7a3d23, 0x3f5236];
     [[-20.3, -12.6], [-20.9, -13.3], [20.6, -15.6]].forEach(([x, z], index) => {
-      const barrelMaterial = new THREE.MeshStandardMaterial({ color: barrelColors[index], roughness: 0.55, metalness: 0.45 });
-      const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+      const barrel = new THREE.Mesh(barrelGeometry, new THREE.MeshStandardMaterial({ color: barrelColors[index], roughness: 0.55, metalness: 0.45 }));
       barrel.position.set(x, 0.45, z);
-      for (const y of [-0.22, 0.22]) {
-        const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.305, 0.018, 6, 20), barrelMaterial);
-        hoop.rotation.x = Math.PI / 2;
-        hoop.position.y = y;
-        barrel.add(hoop);
-      }
       this.addObstacle(barrel, 0.1);
     });
   }
@@ -389,9 +405,10 @@ export class World extends CollisionWorld {
   createContainer(position, rotation, paint) {
     const { map, bumpMap } = corrugatedTextures(paint, 18);
     const material = new THREE.MeshStandardMaterial({ map, bumpMap, bumpScale: 2.2, roughness: 0.62, metalness: 0.35 });
-    const container = new THREE.Mesh(new THREE.BoxGeometry(6.1, 2.75, 2.55), material);
+    const container = new THREE.Group();
     container.position.copy(position);
     container.rotation.y = rotation;
+    container.add(new THREE.Mesh(new THREE.BoxGeometry(6.1, 2.75, 2.55), material));
     const frame = new THREE.MeshStandardMaterial({ color: 0x2f3530, roughness: 0.55, metalness: 0.55 });
     const edgeGeometry = new THREE.BoxGeometry(0.12, 2.8, 0.12);
     for (const x of [-3.03, 3.03]) {
@@ -400,7 +417,6 @@ export class World extends CollisionWorld {
         edge.position.set(x, 0, z);
         container.add(edge);
       }
-      // Dörrarnas låsstänger på kortsidan.
       if (x > 0) {
         for (const z of [-0.85, -0.3, 0.3, 0.85]) {
           const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.5, 6), frame);
@@ -409,8 +425,8 @@ export class World extends CollisionWorld {
         }
       }
     }
+    bakeChildrenByMaterial(container);
     this.addObstacle(container, 0.2);
-    container.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
   }
 
   createTower(steel, darkSteel) {
@@ -423,7 +439,6 @@ export class World extends CollisionWorld {
       post.position.set(x, 3.5, z);
       tower.add(post);
     });
-    // Kryssförband mellan benen.
     const braceLength = Math.hypot(2.8, 2.9);
     const braceGeometry = new THREE.BoxGeometry(0.06, braceLength, 0.06);
     for (let side = 0; side < 4; side++) {
@@ -471,8 +486,8 @@ export class World extends CollisionWorld {
     }
     ladder.position.set(0, 0, 1.55);
     tower.add(ladder);
+    bakeChildrenByMaterial(tower);
     this.addObstacle(tower, 0.08);
-    tower.traverse(child => { if (child.isMesh) child.castShadow = true; });
   }
 
   createBuilding([x, z, w, h, d], index, materials) {
@@ -494,7 +509,6 @@ export class World extends CollisionWorld {
     plinth.position.y = 0.3;
     building.add(plinth);
 
-    // Sadeltak i korrugerad plåt.
     const roofHeight = Math.min(2.4, d * 0.28);
     const roofShape = new THREE.Shape();
     roofShape.moveTo(-d / 2 - 0.45, 0);
@@ -520,7 +534,6 @@ export class World extends CollisionWorld {
       building.add(gable);
     }
 
-    // Fönster längs långsidorna, en eller två våningar.
     const floors = h > 5.5 ? 2 : 1;
     const columns = Math.max(2, Math.floor(w / 3.2));
     for (const side of [-1, 1]) {
@@ -547,8 +560,8 @@ export class World extends CollisionWorld {
     door.rotation.y = Math.PI / 2;
     building.add(door);
 
+    bakeChildrenByMaterial(building);
     this.addObstacle(building, 0.15);
-    building.traverse(child => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
   }
 
   createPerimeter() {
@@ -578,8 +591,7 @@ export class World extends CollisionWorld {
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x4a3828, roughness: 1 });
     const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.26, 1, 7), trunkMaterial, count);
 
-    // Grankrona: konlager med ojämn kant och mörkare insida.
-    const crownGeometry = new THREE.ConeGeometry(1, 1, 11, 2, true);
+    const crownGeometry = new THREE.ConeGeometry(1, 1, 10, 2, true);
     const positions = crownGeometry.attributes.position;
     const crownColors = new Float32Array(positions.count * 3);
     const inner = new THREE.Color(0x1b2a1d);
@@ -598,7 +610,10 @@ export class World extends CollisionWorld {
     crownGeometry.computeVertexNormals();
     const crownMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: THREE.DoubleSide });
     const layers = 4;
-    const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count * layers);
+    // Dela upp kronorna: nära träd (< 82 m) kastar skuggor på marken, avlägsna träd
+    // ligger utanför skuggkameran och behöver inte ritas i skuggpasset.
+    const nearCrowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count * layers);
+    const farCrowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, count * layers);
 
     const leafGeometry = this.displacedBlob(1, 0.28, 8.3);
     const leafMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, flatShading: true });
@@ -608,7 +623,8 @@ export class World extends CollisionWorld {
 
     const dummy = new THREE.Object3D();
     const tint = new THREE.Color();
-    let crownIndex = 0;
+    let nearCrownIndex = 0;
+    let farCrownIndex = 0;
     let pineIndex = 0;
     let leafIndex = 0;
     let birchIndex = 0;
@@ -644,23 +660,25 @@ export class World extends CollisionWorld {
       dummy.updateMatrix();
       trunks.setMatrixAt(pineIndex++, dummy.matrix);
       tint.setScalar(0.75 + this.seededRandom(i * 9) * 0.4);
+      const target = radius < 82 ? nearCrowns : farCrowns;
       for (let layer = 0; layer < layers; layer++) {
         const crownRadius = height * (0.23 - layer * 0.04);
         dummy.position.set(x, ground + height * (0.38 + layer * 0.16), z);
         dummy.rotation.y += 0.9;
         dummy.scale.set(crownRadius, height * (0.34 - layer * 0.03), crownRadius);
         dummy.updateMatrix();
-        crowns.setMatrixAt(crownIndex, dummy.matrix);
-        crowns.setColorAt(crownIndex++, tint);
+        const index = target === nearCrowns ? nearCrownIndex++ : farCrownIndex++;
+        target.setMatrixAt(index, dummy.matrix);
+        target.setColorAt(index, tint);
       }
     }
     trunks.count = pineIndex;
-    crowns.count = crownIndex;
+    nearCrowns.count = nearCrownIndex;
+    farCrowns.count = farCrownIndex;
     leaves.count = leafIndex;
     birchTrunks.count = birchIndex;
-    for (const mesh of [trunks, crowns, leaves, birchTrunks]) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+    nearCrowns.castShadow = true;
+    for (const mesh of [trunks, nearCrowns, farCrowns, leaves, birchTrunks]) {
       this.scene.add(mesh);
     }
   }

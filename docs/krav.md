@@ -14,6 +14,7 @@ Förbättra spelets visuella kvalitet i 3D-scenen (värld, himmel, belysning, va
 | K-02 | Ersätt enkla lådbarriärer, platta gräsrektanglar och kubhus med detaljerade modeller, texturer och kuperad horisont | Uppdrag 2026-11-01 | Jersey-barriärer, fackverkstorn, hus med tak/fönster, skog och grästuvor renderas utan att ändra kollisionsboxar i stridsområdet |
 | K-03 | Ge M12 och CAR-15 samma detaljnivå som AK5-C och förbättra drönarnas och explosionernas utseende | Uppdrag 2026-11-01 | Alla tre vapen samt samtliga drönarklasser och explosioner använder detaljerade modeller och mjuka partiklar |
 | K-04 | Bevara befintliga funktions- och resurstester samt byggbarhet | Projektregler | `npm test`, `npm run build` och `tools/browser-checks.js` passerar |
+| K-05 | Optimera 3D-renderingen utan synlig kvalitetsförlust: förbakad molntextur och djupklippning i himlen, delade/sammanslagna drönarresurser med snabb träffbox, sammanslagen byggnads-/torngeometri, skuggfiltrering för avlägsen skog, förenklade grässtrån och borttaget separat postprocesspass | Uppdrag 2026-11-01 | Låga ritanrop och geometribuffertar i `tools/browser-benchmark.js` med bibehållen visuell kvalitet |
 
 ## Förutsättningar och begränsningar
 

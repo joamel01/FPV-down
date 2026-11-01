@@ -3,7 +3,6 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { WEAPONS, DRONE_TYPES, getWaveSettings } from './config.js';
 import { AudioEngine } from './audio.js';
 import { Drone } from './drone.js';
@@ -15,31 +14,6 @@ import { SettingsStore, SettingsPanel, QUALITY_PRESETS } from './settings.js';
 import { FrameProfiler } from './performance.js';
 import { canResupply, applyResupply } from './resupply.js';
 const { clamp } = THREE.MathUtils;
-
-// Diskret färggradering och vinjettering i linjärt HDR före tonmappningen.
-const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, vignette: { value: 0.32 }, saturation: { value: 1.08 }, warmth: { value: 0.025 } },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
-  `,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform float vignette;
-    uniform float saturation;
-    uniform float warmth;
-    varying vec2 vUv;
-    void main() {
-      vec4 color = texture2D(tDiffuse, vUv);
-      float luminance = dot(color.rgb, vec3(0.2126, 0.7152, 0.0722));
-      color.rgb = mix(vec3(luminance), color.rgb, saturation);
-      color.rgb *= vec3(1.0 + warmth, 1.0, 1.0 - warmth);
-      vec2 offset = vUv - 0.5;
-      color.rgb *= 1.0 - vignette * smoothstep(0.25, 0.85, dot(offset, offset) * 2.2);
-      gl_FragColor = color;
-    }
-  `
-};
 
 export class FPVDownGame {
   constructor() {
@@ -62,18 +36,14 @@ export class FPVDownGame {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.toneMappingExposure = 1.02;
     this.renderer.info.autoReset = false;
 
-    // Composern renderar till egna mål; utan MSAA här blir kanterna taggiga
-    // trots att canvasen har antialias.
     const renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType, samples: 4 });
     this.composer = new EffectComposer(this.renderer, renderTarget);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.5, 0.92);
     this.composer.addPass(this.bloomPass);
-    this.gradePass = new ShaderPass(GradeShader);
-    this.composer.addPass(this.gradePass);
     this.composer.addPass(new OutputPass());
 
     this.audio = new AudioEngine();
@@ -377,6 +347,7 @@ export class FPVDownGame {
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
     const damageByDrone = new Map();
     const hitMeshes = this.drones.filter((drone) => drone.alive).flatMap((drone) => {
+      if (drone.hitBox) return [drone.hitBox];
       const meshes = [];
       drone.group.traverse((child) => { if (child.isMesh) meshes.push(child); });
       return meshes;

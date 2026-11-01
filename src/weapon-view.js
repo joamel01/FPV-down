@@ -309,8 +309,6 @@ export class WeaponView {
       this.muzzleFlash.add(fin);
     }
     group.add(this.muzzleFlash);
-
-    group.traverse((child) => { if (child.isMesh) child.castShadow = true; });
     this.weaponModel = group;
     this.weaponRig.add(group);
     this.models.set(index, { model: group, flash: this.muzzleFlash });
